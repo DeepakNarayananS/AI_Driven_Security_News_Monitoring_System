@@ -1,4 +1,4 @@
-# 🔒 Security News Monitor
+# 🔒 AI Driven Security News Monitoring System
 
 **AI-Driven Security Vulnerability News Feed**
 
@@ -8,14 +8,17 @@ Automatically monitors TheHackerNews for security vulnerabilities affecting your
 
 ## 🎯 Features
 
+- **Multi-Source Monitoring**: Scrapes 3 major security news sites (TheHackerNews, BleepingComputer, SecurityWeek)
+- **AI-Powered Deduplication**: Automatically picks the best article when multiple sources cover the same story
 - **Date-Based Monitoring**: Scrapes ALL articles from today's date (not just top 10)
-- **Enhanced Vendor Detection**: Monitors 31+ vendors including OpenAI, Windows, VMware, Android, iOS
+- **Enhanced Vendor Detection**: Monitors 40 vendors including Cisco, Aruba, F5, Nessus, RedHat, Ubuntu, and more
 - **Vendor Matching**: Checks if your monitored vendors are mentioned in articles
 - **AI Analysis**: Uses Together AI to assess risk and provide recommendations
 - **Email Alerts**: Sends beautiful HTML email reports (only when matches found)
 - **Dynamic Vendor List**: Easily add/remove vendors to monitor
 - **Risk Assessment**: AI-powered risk scoring (Critical/High/Medium/Low)
 - **Smart Date Parsing**: Uses python-dateutil for accurate date detection
+- **Source Attribution**: See which news source provided each article
 
 ---
 
@@ -35,11 +38,36 @@ Automatically monitors TheHackerNews for security vulnerabilities affecting your
 
 ## ✨ Latest Updates
 
-### Enhanced Features (v2.0)
+### Enhanced Features (v3.0) - Multi-Source Intelligence
+- **3 News Sources**: Now scrapes TheHackerNews, BleepingComputer, AND SecurityWeek
+- **AI-Powered Deduplication**: When multiple sources cover the same story, AI picks the most detailed article
+- **Source Attribution**: Email shows which source each article came from
+- **Comprehensive Coverage**: Get the best security news from multiple trusted sources
+
+### Previous Updates (v2.1)
+- **Last Run Tracking**: Monitor now tracks when it last ran successfully
+- **Status Command**: Quick status check with `python security_news_monitor.py status`
+- **Enhanced List**: Vendor list now shows last run timestamp
+
+### Previous Updates (v2.0)
 - **Date-Based Monitoring**: Scrapes ALL articles from today's date (not limited to top 10)
-- **31 Monitored Vendors**: Added OpenAI, Windows, WSUS, Windows Server, VMware, Active Directory, Android, iOS
+- **40 Monitored Vendors**: Cisco, Aruba, F5, Nessus, RedHat, Ubuntu, OpenAI, Windows, VMware, and more
 - **Better Date Parsing**: Uses python-dateutil for accurate date detection across different formats
 - **Smart Email**: Only sends when matches are found (no spam!)
+
+---
+
+## 📚 Documentation
+
+**→ [Complete Guide](GUIDE.md)** - Comprehensive documentation covering:
+- Version history and changelog
+- Development journey (6 phases)
+- Multi-source intelligence deep dive
+- Installation and setup
+- Deployment and automation
+- Email reports and customization
+- Troubleshooting and best practices
+- Real-world examples
 
 ---
 
@@ -48,7 +76,7 @@ Automatically monitors TheHackerNews for security vulnerabilities affecting your
 ### 1. Install Dependencies
 
 ```bash
-cd AI_Driven_Security_News_Monitoring_System
+cd security-news-monitor
 pip install -r requirements.txt
 ```
 
@@ -64,7 +92,10 @@ Your `.env` file is already configured with:
 # Run once (manual check)
 python security_news_monitor.py run
 
-# List monitored vendors
+# Check status (shows last run time)
+python security_news_monitor.py status
+
+# List monitored vendors (shows last run time)
 python security_news_monitor.py list
 
 # Add a new vendor
@@ -90,26 +121,18 @@ When relevant news is found, you'll receive an email with:
 
 ## ⏰ Schedule Daily Monitoring
 
-### Windows (Task Scheduler)
+**See [Complete Guide](GUIDE.md#deployment--automation) for detailed setup instructions.**
 
-1. Open Task Scheduler
-2. Create Basic Task
-3. Name: "Security News Monitor"
-4. Trigger: Daily at 9:00 AM
-5. Action: Start a program
+### Quick Setup (Windows Task Scheduler)
+
+1. Open Task Scheduler (`Win + R` → `taskschd.msc`)
+2. Create Basic Task → Name: "Security News Monitor"
+3. Trigger: Daily at 9:00 AM
+4. Action: Start a program
    - Program: `python`
-   - Arguments: `C:\path\to\security_news_monitor.py run`
-   - Start in: `C:\path\to\security-news-monitor`
-
-### Linux/Mac (Cron)
-
-```bash
-# Edit crontab
-crontab -e
-
-# Add this line (runs daily at 9 AM)
-0 9 * * * cd /path/to/security-news-monitor && python security_news_monitor.py run
-```
+   - Arguments: `security_news_monitor.py run`
+   - Start in: `C:\Users\DEEPAK\Documents\Kiro\security-news-monitor`
+5. Enable "Run with highest privileges"
 
 ---
 
@@ -150,7 +173,10 @@ SMTP_PASS=your_gmail_app_password
 ## 📊 How It Works
 
 ```
-1. Scrape TheHackerNews
+1. Scrape 3 News Sources
+   ├→ TheHackerNews
+   ├→ BleepingComputer
+   └→ SecurityWeek
    ↓
 2. Extract ALL articles from today's date
    ↓
@@ -158,12 +184,15 @@ SMTP_PASS=your_gmail_app_password
    ↓
 4. Check for vendor mentions (31 vendors)
    ↓
-5. If matches found:
+5. AI Deduplication
+   └→ Pick best article if same story from multiple sources
+   ↓
+6. If matches found:
    ├→ Analyze with AI
-   ├→ Generate HTML report
+   ├→ Generate HTML report with source attribution
    └→ Send email alert
    ↓
-6. If no matches:
+7. If no matches:
    └→ No email sent (silent)
 ```
 
@@ -203,11 +232,12 @@ python security_news_monitor.py test
 ```
 security-news-monitor/
 ├── security_news_monitor.py   # Main application
-├── vendors.json                # Vendor list (editable)
+├── vendors.json                # Vendor list (includes last_updated timestamp)
 ├── .env                        # Configuration (your keys)
 ├── .env.example               # Example configuration
 ├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+├── README.md                  # Quick reference (this file)
+└── GUIDE.md                   # Complete comprehensive guide
 ```
 
 ---
@@ -307,7 +337,9 @@ When you run the monitor, you'll see:
 
 ---
 
-## 📞 Support
+## 📞 Need Help?
+
+**→ [Read the Complete Guide](GUIDE.md)** for detailed documentation
 
 ### Common Commands
 ```bash
@@ -326,6 +358,16 @@ python security_news_monitor.py add "vendor-name"
 # Remove vendor
 python security_news_monitor.py remove "vendor-name"
 ```
+
+### Quick Links to GUIDE.md
+- [Version History](GUIDE.md#version-history) - Changelog and updates
+- [Multi-Source Intelligence](GUIDE.md#multi-source-intelligence) - How 3-source monitoring works
+- [Installation & Setup](GUIDE.md#installation--setup)
+- [Deployment & Automation](GUIDE.md#deployment--automation)
+- [Understanding Email Reports](GUIDE.md#understanding-the-email-reports)
+- [Troubleshooting](GUIDE.md#troubleshooting)
+- [Best Practices](GUIDE.md#best-practices)
+- [Real-World Examples](GUIDE.md#real-world-example)
 
 ---
 
