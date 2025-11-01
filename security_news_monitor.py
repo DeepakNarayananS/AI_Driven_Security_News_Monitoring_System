@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Security News Monitor
-Monitors TheHackerNews for security vulnerabilities affecting your vendors
-Sends email alerts when relevant news is found
+Monitors TheHackerNews , Bleeping Computers and Securityweek for security vulnerabilities affecting your vendors
+Summarize it without duplicates and sends email alerts when relevant news is found
 """
 
 import os
@@ -41,6 +41,8 @@ SMTP_USER = os.getenv("SMTP_USER", EMAIL_FROM)
 SMTP_PASS = os.getenv("SMTP_PASS")
 
 HACKERNEWS_URL = "https://thehackernews.com/"
+BLEEPINGCOMPUTER_URL = "https://www.bleepingcomputer.com/"
+SECURITYWEEK_URL = "https://www.securityweek.com/"
 VENDORS_FILE = "vendors.json"
 
 # ============================================================================
@@ -76,6 +78,28 @@ def save_vendors(vendors: List[str]):
         json.dump(data, f, indent=2)
     print(f"✅ Vendors saved to {VENDORS_FILE}")
 
+def update_last_run():
+    """Update the last_updated timestamp after a successful monitor run."""
+    try:
+        with open(VENDORS_FILE, 'r') as f:
+            data = json.load(f)
+        
+        data["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        with open(VENDORS_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"⚠️  Could not update last run time: {e}")
+
+def get_last_run():
+    """Get the last run timestamp from vendors.json."""
+    try:
+        with open(VENDORS_FILE, 'r') as f:
+            data = json.load(f)
+            return data.get("last_updated", "Never")
+    except Exception:
+        return "Never"
+
 def add_vendor(vendor: str):
     """Add a new vendor to the list."""
     vendors = load_vendors()
@@ -101,10 +125,13 @@ def remove_vendor(vendor: str):
 def list_vendors():
     """Display all vendors."""
     vendors = load_vendors()
+    last_run = get_last_run()
     print(f"\n📋 Monitored Vendors ({len(vendors)}):")
     print("=" * 50)
     for i, vendor in enumerate(sorted(vendors), 1):
         print(f"{i:2d}. {vendor}")
+    print("=" * 50)
+    print(f"⏰ Last Run: {last_run}")
     print("=" * 50)
 
 # ============================================================================
@@ -189,11 +216,203 @@ def scrape_hackernews_today() -> List[Dict[str, str]]:
         return articles
     
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error scraping news: {e}")
+        print(f"❌ Error scraping TheHackerNews: {e}")
         return []
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
         return []
+
+def scrape_bleepingcomputer_today() -> List[Dict[str, str]]:
+    """
+    Scrape ALL articles from today's date from BleepingComputer.
+    Returns list of articles with title, link, description, date, and source.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    print(f"\n🔍 Scraping {BLEEPINGCOMPUTER_URL} for articles from {today}...")
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(BLEEPINGCOMPUTER_URL, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        articles = []
+        
+        # Find article containers
+        article_elements = soup.find_all('article') or soup.find_all('div', class_='bc_latest_news_text')
+        
+        print(f"📄 Processing {len(article_elements)} articles...")
+        
+        for article in article_elements:
+            try:
+                # Extract title
+                title_elem = article.find('h4') or article.find('h2') or article.find('h3')
+                if not title_elem:
+                    continue
+                
+                title = title_elem.get_text(strip=True)
+                
+                # Extract link
+                link_elem = title_elem.find('a') or article.find('a')
+                link = link_elem.get('href', '') if link_elem else ''
+                if link and not link.startswith('http'):
+                    link = BLEEPINGCOMPUTER_URL.rstrip('/') + link
+                
+                # Extract description
+                desc_elem = article.find('p')
+                description = desc_elem.get_text(strip=True) if desc_elem else ''
+                
+                # Extract date
+                date_elem = article.find('time') or article.find('li', class_='bc_date')
+                article_date = None
+                
+                if date_elem:
+                    date_text = date_elem.get_text(strip=True)
+                    try:
+                        if date_parser:
+                            article_date = date_parser.parse(date_text).strftime("%Y-%m-%d")
+                    except:
+                        if any(word in date_text.lower() for word in ['hour', 'minute', 'ago', 'today']):
+                            article_date = today
+                
+                # Include if today's article
+                if not article_date or article_date == today:
+                    if title and link:
+                        articles.append({
+                            'title': title,
+                            'link': link,
+                            'description': description[:300],
+                            'date': article_date or today,
+                            'source': 'BleepingComputer'
+                        })
+                        print(f"  ✓ Added: {title[:60]}...")
+            except Exception as e:
+                print(f"⚠️  Error parsing article: {e}")
+                continue
+        
+        print(f"✅ Found {len(articles)} articles from BleepingComputer")
+        return articles
+    
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error scraping BleepingComputer: {e}")
+        return []
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return []
+
+def scrape_securityweek_today() -> List[Dict[str, str]]:
+    """
+    Scrape ALL articles from today's date from SecurityWeek.
+    Returns list of articles with title, link, description, date, and source.
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    print(f"\n🔍 Scraping {SECURITYWEEK_URL} for articles from {today}...")
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(SECURITYWEEK_URL, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        articles = []
+        
+        # Find article containers
+        article_elements = soup.find_all('article') or soup.find_all('div', class_='article')
+        
+        print(f"📄 Processing {len(article_elements)} articles...")
+        
+        for article in article_elements:
+            try:
+                # Extract title
+                title_elem = article.find('h2') or article.find('h3') or article.find('h4')
+                if not title_elem:
+                    continue
+                
+                title = title_elem.get_text(strip=True)
+                
+                # Extract link
+                link_elem = title_elem.find('a') or article.find('a')
+                link = link_elem.get('href', '') if link_elem else ''
+                if link and not link.startswith('http'):
+                    link = SECURITYWEEK_URL.rstrip('/') + link
+                
+                # Extract description
+                desc_elem = article.find('p') or article.find('div', class_='excerpt')
+                description = desc_elem.get_text(strip=True) if desc_elem else ''
+                
+                # Extract date
+                date_elem = article.find('time') or article.find('span', class_='date')
+                article_date = None
+                
+                if date_elem:
+                    date_text = date_elem.get_text(strip=True)
+                    try:
+                        if date_parser:
+                            article_date = date_parser.parse(date_text).strftime("%Y-%m-%d")
+                    except:
+                        if any(word in date_text.lower() for word in ['hour', 'minute', 'ago', 'today']):
+                            article_date = today
+                
+                # Include if today's article
+                if not article_date or article_date == today:
+                    if title and link:
+                        articles.append({
+                            'title': title,
+                            'link': link,
+                            'description': description[:300],
+                            'date': article_date or today,
+                            'source': 'SecurityWeek'
+                        })
+                        print(f"  ✓ Added: {title[:60]}...")
+            except Exception as e:
+                print(f"⚠️  Error parsing article: {e}")
+                continue
+        
+        print(f"✅ Found {len(articles)} articles from SecurityWeek")
+        return articles
+    
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error scraping SecurityWeek: {e}")
+        return []
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return []
+
+def scrape_all_sources() -> List[Dict[str, str]]:
+    """
+    Scrape all news sources and combine results.
+    Returns combined list of articles from all sources.
+    """
+    print("\n" + "="*70)
+    print("📰 SCRAPING MULTIPLE NEWS SOURCES")
+    print("="*70)
+    
+    all_articles = []
+    
+    # Scrape TheHackerNews
+    thn_articles = scrape_hackernews_today()
+    for article in thn_articles:
+        article['source'] = 'TheHackerNews'
+    all_articles.extend(thn_articles)
+    
+    # Scrape BleepingComputer
+    bc_articles = scrape_bleepingcomputer_today()
+    all_articles.extend(bc_articles)
+    
+    # Scrape SecurityWeek
+    sw_articles = scrape_securityweek_today()
+    all_articles.extend(sw_articles)
+    
+    print(f"\n✅ Total articles from all sources: {len(all_articles)}")
+    print(f"   - TheHackerNews: {len(thn_articles)}")
+    print(f"   - BleepingComputer: {len(bc_articles)}")
+    print(f"   - SecurityWeek: {len(sw_articles)}")
+    
+    return all_articles
 
 # ============================================================================
 # VENDOR MATCHING
@@ -228,6 +447,137 @@ def check_vendor_mentions(articles: List[Dict[str, str]], vendors: List[str]) ->
     
     print(f"\n📊 Found {len(matched_articles)} relevant articles")
     return matched_articles
+
+def deduplicate_articles_with_ai(articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Use AI to identify duplicate stories across sources and pick the best one.
+    Groups articles by vendor and topic, then selects the most detailed version.
+    """
+    if len(articles) <= 1:
+        return articles
+    
+    print(f"\n🤖 AI Deduplication: Analyzing {len(articles)} articles for duplicates...")
+    
+    if not TOGETHER_API_KEY:
+        print("⚠️  No AI API key - skipping deduplication")
+        return articles
+    
+    try:
+        # Group articles by vendor
+        vendor_groups = {}
+        for article in articles:
+            for vendor in article['matched_vendors']:
+                if vendor not in vendor_groups:
+                    vendor_groups[vendor] = []
+                vendor_groups[vendor].append(article)
+        
+        # For each vendor, check for duplicates
+        deduplicated = []
+        processed_articles = set()
+        
+        for vendor, vendor_articles in vendor_groups.items():
+            if len(vendor_articles) == 1:
+                # Only one article for this vendor, keep it
+                if id(vendor_articles[0]) not in processed_articles:
+                    deduplicated.append(vendor_articles[0])
+                    processed_articles.add(id(vendor_articles[0]))
+            else:
+                # Multiple articles for same vendor - check if they're about the same story
+                print(f"  🔍 Checking {len(vendor_articles)} articles about '{vendor}'...")
+                
+                # Prepare article summaries for AI
+                article_summaries = []
+                for i, art in enumerate(vendor_articles):
+                    article_summaries.append(f"""
+Article {i+1} (Source: {art.get('source', 'Unknown')}):
+Title: {art['title']}
+Description: {art['description']}
+Link: {art['link']}
+""")
+                
+                prompt = f"""You are analyzing security news articles about '{vendor}'. 
+                
+Here are {len(vendor_articles)} articles:
+{''.join(article_summaries)}
+
+Task:
+1. Identify if these articles are about the SAME security incident/vulnerability or DIFFERENT ones
+2. If SAME: Return the article number (1, 2, 3, etc.) that has the MOST DETAILED and COMPREHENSIVE information
+3. If DIFFERENT: Return "DIFFERENT" and I'll keep all articles
+
+Respond with ONLY:
+- A single number (1, 2, 3, etc.) if articles are about the same story
+- The word "DIFFERENT" if they cover different stories
+
+Your response:"""
+
+                headers = {
+                    "Authorization": f"Bearer {TOGETHER_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                
+                data = {
+                    "model": "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 50,
+                    "temperature": 0.3
+                }
+                
+                response = requests.post(
+                    "https://api.together.xyz/v1/chat/completions",
+                    headers=headers,
+                    json=data,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    ai_response = result['choices'][0]['message']['content'].strip().upper()
+                    
+                    if "DIFFERENT" in ai_response:
+                        # Keep all articles - they're about different stories
+                        print(f"    ✓ Different stories - keeping all {len(vendor_articles)} articles")
+                        for art in vendor_articles:
+                            if id(art) not in processed_articles:
+                                deduplicated.append(art)
+                                processed_articles.add(id(art))
+                    else:
+                        # Try to extract article number
+                        try:
+                            best_idx = int(ai_response.split()[0]) - 1
+                            if 0 <= best_idx < len(vendor_articles):
+                                best_article = vendor_articles[best_idx]
+                                if id(best_article) not in processed_articles:
+                                    # Add source info showing it was chosen from multiple
+                                    best_article['duplicate_sources'] = [art.get('source', 'Unknown') for art in vendor_articles]
+                                    deduplicated.append(best_article)
+                                    processed_articles.add(id(best_article))
+                                    print(f"    ✓ Same story - picked best from {best_article.get('source', 'Unknown')}")
+                            else:
+                                # Invalid index, keep all
+                                for art in vendor_articles:
+                                    if id(art) not in processed_articles:
+                                        deduplicated.append(art)
+                                        processed_articles.add(id(art))
+                        except:
+                            # Couldn't parse, keep all
+                            for art in vendor_articles:
+                                if id(art) not in processed_articles:
+                                    deduplicated.append(art)
+                                    processed_articles.add(id(art))
+                else:
+                    # API error, keep all articles
+                    for art in vendor_articles:
+                        if id(art) not in processed_articles:
+                            deduplicated.append(art)
+                            processed_articles.add(id(art))
+        
+        print(f"✅ Deduplication complete: {len(articles)} → {len(deduplicated)} articles")
+        return deduplicated
+    
+    except Exception as e:
+        print(f"⚠️  Deduplication error: {e}")
+        return articles
 
 # ============================================================================
 # AI ANALYSIS
@@ -406,6 +756,20 @@ def generate_email_html(articles: List[Dict[str, Any]], ai_analysis: Dict[str, A
                 margin: 5px 5px 5px 0;
                 font-weight: 600;
             }}
+            .source-badge {{
+                display: inline-block;
+                background-color: #28a745;
+                color: white;
+                padding: 3px 10px;
+                border-radius: 10px;
+                font-size: 11px;
+                margin-left: 10px;
+                font-weight: 500;
+            }}
+            .multi-source {{
+                background-color: #ffc107;
+                color: #333;
+            }}
             .description {{
                 color: #6c757d;
                 font-size: 14px;
@@ -483,6 +847,10 @@ def generate_email_html(articles: List[Dict[str, Any]], ai_analysis: Dict[str, A
     """
     
     for i, article in enumerate(articles, 1):
+        # Check if article was selected from multiple sources
+        duplicate_sources = article.get('duplicate_sources', [])
+        source_badge = article.get('source', 'Unknown')
+        
         html += f"""
                 <div class="article">
                     <h3>{i}. {article['title']}</h3>
@@ -490,6 +858,14 @@ def generate_email_html(articles: List[Dict[str, Any]], ai_analysis: Dict[str, A
         """
         for vendor in article['matched_vendors']:
             html += f'<span class="vendors">{vendor.upper()}</span>'
+        
+        # Add source badge
+        if duplicate_sources and len(duplicate_sources) > 1:
+            sources_text = ', '.join(set(duplicate_sources))
+            html += f'<span class="source-badge multi-source">📰 Best from: {sources_text}</span>'
+        else:
+            html += f'<span class="source-badge">📰 {source_badge}</span>'
+        
         html += f"""
                     </div>
                     <p class="description">{article['description']}</p>
@@ -523,7 +899,12 @@ def generate_email_html(articles: List[Dict[str, Any]], ai_analysis: Dict[str, A
             <div class="footer">
                 <p>This report was automatically generated by Security News Monitor</p>
                 <p>Monitoring {len(load_vendors())} vendors for security vulnerabilities</p>
-                <p>Source: <a href="{HACKERNEWS_URL}" target="_blank">TheHackerNews</a></p>
+                <p>Sources: 
+                    <a href="{HACKERNEWS_URL}" target="_blank">TheHackerNews</a> | 
+                    <a href="{BLEEPINGCOMPUTER_URL}" target="_blank">BleepingComputer</a> | 
+                    <a href="{SECURITYWEEK_URL}" target="_blank">SecurityWeek</a>
+                </p>
+                <p style="font-size: 11px; color: #999;">AI-powered deduplication ensures you get the most detailed coverage</p>
             </div>
         </div>
     </body>
@@ -569,7 +950,10 @@ def run_security_monitor():
     print("\n" + "="*70)
     print("🔒 SECURITY NEWS MONITOR")
     print("="*70)
-    print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏰ Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    last_run = get_last_run()
+    print(f"⏰ Previous Run: {last_run}")
     
     # Load vendors
     vendors = load_vendors()
@@ -579,10 +963,10 @@ def run_security_monitor():
     
     print(f"📋 Monitoring {len(vendors)} vendors")
     
-    # Scrape news from today
-    articles = scrape_hackernews_today()
+    # Scrape news from all sources
+    articles = scrape_all_sources()
     if not articles:
-        print("❌ No articles found")
+        print("❌ No articles found from any source")
         return
     
     # Check for vendor mentions
@@ -593,19 +977,26 @@ def run_security_monitor():
         print("="*70)
         return
     
+    # Deduplicate articles using AI
+    deduplicated_articles = deduplicate_articles_with_ai(matched_articles)
+    
     # Analyze with AI
-    ai_analysis = analyze_with_ai(matched_articles)
+    ai_analysis = analyze_with_ai(deduplicated_articles)
     
     # Generate and send email
     print("\n📧 Generating email report...")
-    subject = f"🚨 Security Alert: {len(matched_articles)} Vulnerabilities Affecting Your Vendors"
-    html_body = generate_email_html(matched_articles, ai_analysis)
+    subject = f"🚨 Security Alert: {len(deduplicated_articles)} Vulnerabilities Affecting Your Vendors"
+    html_body = generate_email_html(deduplicated_articles, ai_analysis)
     
     if send_email(subject, html_body):
         print(f"📬 Report sent to {EMAIL_TO}")
     
+    # Update last run timestamp
+    update_last_run()
+    
     print("\n" + "="*70)
     print("✅ Monitoring complete!")
+    print(f"⏰ Last Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*70)
 
 # ============================================================================
@@ -637,6 +1028,22 @@ def main():
             print("🧪 Running test...")
             run_security_monitor()
         
+        elif command == "status":
+            print("\n" + "="*70)
+            print("📊 MONITOR STATUS")
+            print("="*70)
+            vendors = load_vendors()
+            last_run = get_last_run()
+            print(f"📋 Monitored Vendors: {len(vendors)}")
+            print(f"⏰ Last Run: {last_run}")
+            print(f"📧 Email To: {EMAIL_TO}")
+            print(f"🔗 Sources:")
+            print(f"   - {HACKERNEWS_URL}")
+            print(f"   - {BLEEPINGCOMPUTER_URL}")
+            print(f"   - {SECURITYWEEK_URL}")
+            print(f"🤖 AI Deduplication: Enabled")
+            print("="*70)
+        
         else:
             print("❌ Unknown command")
             print_usage()
@@ -656,12 +1063,14 @@ Usage:
 Commands:
   run              Run the security monitor (check news and send email)
   test             Test run (same as 'run')
-  list             List all monitored vendors
+  list             List all monitored vendors (shows last run time)
+  status           Show monitor status and configuration
   add <vendor>     Add a new vendor to monitor
   remove <vendor>  Remove a vendor from monitoring
 
 Examples:
   python security_news_monitor.py run
+  python security_news_monitor.py status
   python security_news_monitor.py list
   python security_news_monitor.py add "cisco"
   python security_news_monitor.py remove "cisco"
