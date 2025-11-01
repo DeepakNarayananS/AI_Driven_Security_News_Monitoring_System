@@ -48,7 +48,7 @@ Automatically monitors TheHackerNews for security vulnerabilities affecting your
 ### 1. Install Dependencies
 
 ```bash
-cd security-news-monitor
+cd AI_Driven_Security_News_Monitoring_System
 pip install -r requirements.txt
 ```
 
